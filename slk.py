@@ -15,7 +15,7 @@ def main ():
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--authenticate', action='store_true', default=False)
 
-    subparsers = argparser.add_subparsers(title='subcommands')
+    subparsers = argparser.add_subparsers(title='subcommands', dest='subcommand')
 
     version = subparsers.add_parser('version')
     version.set_defaults(func=get_version)
@@ -40,7 +40,14 @@ def main ():
         )
     else:
         session_key = None
-    if args.func:
+
+    if args.subcommand == 'version':
+        if args.func:
+            args.func(
+                url=config.get('api', 'url'),
+                verify=config.getboolean('api', 'verify'),
+            )
+    elif args.func:
         args.func(
             session_key = session_key,
             url=config.get('api', 'url'),
