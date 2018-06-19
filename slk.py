@@ -68,7 +68,7 @@ def authenticate (url, domain, username, password, verify=True):
 def get_exports (url, session_key, verify=True):
     response = requests.get('{url}/v1/exports'.format(url=url), verify=verify, headers={'X-SDS-SessionKey': session_key})
     for record in response.json()['records']:
-        print(record['_id'], record['name'])
+        print(record['_id'], record['attributes']['mountType'], record['attributes']['mountOptions'], record['attributes']['mountHosts'], record['name'], record['nsID'])
 
 
 if __name__ == '__main__':
