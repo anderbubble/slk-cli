@@ -25,47 +25,26 @@ def main ():
         'verify': config.getboolean('api', 'verify'),
     }
 
-    pkwargs = {
-        'type_': args.subcommand,
-        'pprint_': args.pprint,
-        'dsv': args.dsv,
-    }
-
-    authd_kwargs = kwargs.copy()
-
     if args.authenticate:
-        authd_kwargs['session_key'] = authenticate(
+        kwargs['session_key'] = authenticate(
             domain = config.get('api', 'domain'),
             username = config.get('api', 'username'),
             password = config.get('api', 'password'),
             **kwargs
         )
 
-    if args.subcommand == 'version':
-        print(get_version(**kwargs))
+    kwargs['version'] = config.get('api', 'version')
 
-    elif args.subcommand in ('stores', 'pools', 'exports'):
-        for id_ in args.ids:
-            for record in get_simple_by_id(args.subcommand, id_, **authd_kwargs):
-                print_record(record, **pkwargs)
-        if not args.ids:
-            for record in get_simple(args.subcommand, **authd_kwargs):
-                print_record(record, **pkwargs)
-
-    elif args.subcommand == 'namespaces':
-        for id_ in args.ids:
-            for record in get_simple_by_id('namespaces', id_, **authd_kwargs):
-                print_record(record, **pkwargs)
-        if not args.ids:
-            for record in get_namespaces(**authd_kwargs):
-                print_record(record, **pkwargs)
-
-    elif args.subcommand == 'exports':
-        for record in get_simple('exports', **authd_kwargs):
-            print_record(record, **pkwargs)
-
+    if args.path == 'version':
+        print(get_version(
+            url = config.get('api', 'url'),
+            verify = config.getboolean('api', 'verify'),
+        ))
     else:
-        raise NotImplementedError(args.subcommand)
+        record_type = get_record_type_from_path(args.path)
+
+        for record in get_records_dynamic(args.path, **kwargs):
+            print_record(record, record_type, dsv=args.dsv, pprint_=args.pprint)
 
 
 def get_argparser ():
@@ -73,22 +52,7 @@ def get_argparser ():
     argparser.add_argument('--authenticate', action='store_true', default=False)
     argparser.add_argument('--pprint', action='store_true', default=False)
     argparser.add_argument('--dsv', action='store_true', default=False)
-
-    subparsers = argparser.add_subparsers(title='subcommands', dest='subcommand')
-
-    version = subparsers.add_parser('version')
-
-    stores = subparsers.add_parser('stores')
-    stores.add_argument('ids', nargs='*')
-
-    pools = subparsers.add_parser('pools')
-    pools.add_argument('ids', nargs='*')
-
-    namespaces = subparsers.add_parser('namespaces')
-    namespaces.add_argument('ids', nargs='*')
-
-    exports = subparsers.add_parser('exports')
-    exports.add_argument('ids', nargs='*')
+    argparser.add_argument('path')
     return argparser
 
 
@@ -115,8 +79,11 @@ def authenticate (url, domain, username, password, verify=True):
     return session_key
 
 
-def get_simple (model, url, session_key=None, verify=True):
-    response = requests.get('{url}/v1/{model}'.format(url=url, model=model), verify=verify, headers={'X-SDS-SessionKey': session_key})
+def get_records_dynamic (path, url, version, session_key=None, verify=True):
+    headers = {}
+    if session_key is not None:
+        headers['X-SDS-SessionKey'] = session_key
+    response = requests.get('/'.join((url, version, path)), verify=verify, headers=headers)
     check_errors(response.json())
     return response.json()['records']
 
@@ -124,11 +91,6 @@ def get_simple (model, url, session_key=None, verify=True):
 def check_errors (response_dict):
     if 'errors' in response_dict:
         raise RESTErrors(*response_dict['errors'])
-
-
-def get_simple_by_id (model, id_, url, session_key, verify=True):
-    response = requests.get('{url}/v1/{model}/{id_}'.format(url=url, model=model, id_=id_), verify=verify, headers={'X-SDS-SessionKey': session_key})
-    return response.json()['records']
 
 
 def get_namespaces (url, model, session_key=None, verify=True, parent_id="1", names=['pl'], attributes={}):
@@ -151,6 +113,14 @@ SIMPLE_FIELDS = {
     'namespaces': ('_id', 'posix_uid', 'posix_gid', 'posix_mode', 'path'),
     'exports': ('_id', 'name', 'description', 'nsID'),
 }
+
+
+def get_record_type_from_path (path):
+    for element in reversed(path.split('/')):
+        if element in SIMPLE_FIELDS:
+            return element
+    else:
+        raise NotImplementedError(path)
 
 
 def print_record (record, type_, dsv=False, pprint_=False):
