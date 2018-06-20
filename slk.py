@@ -7,75 +7,99 @@ from __future__ import print_function
 import argparse
 import ConfigParser
 import os
+import pprint
 import requests
 import urllib3
 
 
 def main ():
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument('--authenticate', action='store_true', default=False)
-
-    subparsers = argparser.add_subparsers(title='subcommands', dest='subcommand')
-
-    version = subparsers.add_parser('version')
-
-    exports = subparsers.add_parser('exports')
-
-    namespaces = subparsers.add_parser('namespaces')
-    namespaces.add_argument('ids', nargs='*')
-    namespaces.add_argument('--detail', action='store_true', default=False)
-    namespaces.add_argument('--json', action='store_true', default=False)
-
-    config = ConfigParser.SafeConfigParser()
-    config.read([os.path.expanduser('~/.slk-api.cfg')])
+    argparser = get_argparser()
+    config = get_config()
 
     args = argparser.parse_args()
 
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    kwargs = {
+        'url': config.get('api', 'url'),
+        'verify': config.getboolean('api', 'verify'),
+    }
+
+    authd_kwargs = kwargs.copy()
+
     if args.authenticate:
-        session_key = authenticate(
-            url = config.get('api', 'url'),
-            verify = config.getboolean('api', 'verify'),
+        authd_kwargs['session_key'] = authenticate(
             domain = config.get('api', 'domain'),
             username = config.get('api', 'username'),
             password = config.get('api', 'password'),
+            **kwargs
         )
+
+    if args.pprint:
+        print_f = pprint.pprint
     else:
-        session_key = None
+        print_f = print
 
     if args.subcommand == 'version':
-        get_version(
-            url=config.get('api', 'url'),
-            verify=config.getboolean('api', 'verify'),
-        )
-    elif args.subcommand == 'namespaces':
-        if not args.ids:
-            get_namespaces(
-                session_key = session_key,
-                url=config.get('api', 'url'),
-                verify=config.getboolean('api', 'verify'),
-            )
+        print_f(get_version(**kwargs))
+
+    elif args.subcommand in ('stores', 'pools', 'exports'):
         for id_ in args.ids:
-            for record in get_namespace(
-                    session_key = session_key,
-                    id_ = id_,
-                    url=config.get('api', 'url'),
-                    verify=config.getboolean('api', 'verify'),
-            ):
-                print_namespace(record, detail=args.detail, json=args.json)
+            for record in get_simple_by_id(args.subcommand, id_, **authd_kwargs):
+                print_f(record)
+        if not args.ids:
+            for record in get_simple(args.subcommand, **authd_kwargs):
+                print_f(record)
+
+    elif args.subcommand == 'namespaces':
+        for id_ in args.ids:
+            for record in get_simple_by_id('namespaces', id_, **authd_kwargs):
+                print_f(record)
+        if not args.ids:
+            for record in get_namespaces(**authd_kwargs):
+                print_f(record)
+
     elif args.subcommand == 'exports':
-        get_exports(
-            session_key = session_key,
-            url=config.get('api', 'url'),
-            verify=config.getboolean('api', 'verify'),
-        )
+        for record in get_simple('exports', **authd_kwargs):
+            print_f(record)
+
+    else:
+        raise NotImplemented(args.subcommand)
+
+
+def get_argparser ():
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument('--authenticate', action='store_true', default=False)
+    argparser.add_argument('--pprint', action='store_true', default=False)
+
+    subparsers = argparser.add_subparsers(title='subcommands', dest='subcommand')
+
+    version = subparsers.add_parser('version')
+
+    stores = subparsers.add_parser('stores')
+    stores.add_argument('ids', nargs='*')
+
+    pools = subparsers.add_parser('pools')
+    pools.add_argument('ids', nargs='*')
+
+    namespaces = subparsers.add_parser('namespaces')
+    namespaces.add_argument('ids', nargs='*')
+
+    exports = subparsers.add_parser('exports')
+    exports.add_argument('ids', nargs='*')
+    return argparser
+
+
+def get_config ():
+    config = ConfigParser.SafeConfigParser()
+    config.read([os.path.expanduser('~/.slk-api.cfg')])
+    return config
 
 
 def get_version (url, verify=True):
     response = requests.get('{url}/version'.format(url=url), verify=verify)
     version = response.json()['records'][0]['version']
-    print(version)
+    return version
 
 
 def authenticate (url, domain, username, password, verify=True):
@@ -89,14 +113,23 @@ def authenticate (url, domain, username, password, verify=True):
     return session_key
 
 
-def get_exports (url, session_key, verify=True):
-    response = requests.get('{url}/v1/exports'.format(url=url), verify=verify, headers={'X-SDS-SessionKey': session_key})
-    for record in response.json()['records']:
-        namespace = list(get_namespace(url, session_key, record['nsID'], verify=verify))[0]
-        print(record['_id'], record['attributes']['mountType'], record['attributes']['mountOptions'], record['attributes']['mountHosts'], record['name'], namespace['path'])
+def get_simple (model, url, session_key=None, verify=True):
+    response = requests.get('{url}/v1/{model}'.format(url=url, model=model), verify=verify, headers={'X-SDS-SessionKey': session_key})
+    check_errors(response.json())
+    return response.json()['records']
 
 
-def get_namespaces (url, session_key, verify=True, parent_id="1", names=['pl'], attributes={}):
+def check_errors (response_dict):
+    if 'errors' in response_dict:
+        raise RESTErrors(*response_dict['errors'])
+
+
+def get_simple_by_id (model, id_, url, session_key, verify=True):
+    response = requests.get('{url}/v1/{model}/{id_}'.format(url=url, model=model, id_=id_), verify=verify, headers={'X-SDS-SessionKey': session_key})
+    return response.json()['records']
+
+
+def get_namespaces (url, model, session_key=None, verify=True, parent_id="1", names=['pl'], attributes={}):
     response = requests.get('{url}/v1/namespaces'.format(url=url),
                             verify=verify,
                             headers={'X-SDS-SessionKey': session_key},
@@ -110,20 +143,8 @@ def get_namespaces (url, session_key, verify=True, parent_id="1", names=['pl'], 
         print(record)
 
 
-def get_namespace (url, session_key, id_, verify=True):
-    response = requests.get('{url}/v1/namespaces/{id_}'.format(url=url, id_=id_), verify=verify, headers={'X-SDS-SessionKey': session_key})
-    for record in response.json()['records']:
-        yield record
+class RESTErrors (Exception): pass
 
-
-def print_namespace (record, detail=False, json=False):
-    if json:
-        print(record)
-    elif detail:
-        print(record['path'])
-        print('    parent: {}'.format(record['parent_id']))
-    else:
-        print(record['path'])
 
 if __name__ == '__main__':
     main()
