@@ -25,6 +25,12 @@ def main ():
         'verify': config.getboolean('api', 'verify'),
     }
 
+    pkwargs = {
+        'type_': args.subcommand,
+        'pprint_': args.pprint,
+        'dsv': args.dsv,
+    }
+
     authd_kwargs = kwargs.copy()
 
     if args.authenticate:
@@ -35,42 +41,38 @@ def main ():
             **kwargs
         )
 
-    if args.pprint:
-        print_f = pprint.pprint
-    else:
-        print_f = print
-
     if args.subcommand == 'version':
-        print_f(get_version(**kwargs))
+        print(get_version(**kwargs))
 
     elif args.subcommand in ('stores', 'pools', 'exports'):
         for id_ in args.ids:
             for record in get_simple_by_id(args.subcommand, id_, **authd_kwargs):
-                print_f(record)
+                print_record(record, **pkwargs)
         if not args.ids:
             for record in get_simple(args.subcommand, **authd_kwargs):
-                print_f(record)
+                print_record(record, **pkwargs)
 
     elif args.subcommand == 'namespaces':
         for id_ in args.ids:
             for record in get_simple_by_id('namespaces', id_, **authd_kwargs):
-                print_f(record)
+                print_record(record, **pkwargs)
         if not args.ids:
             for record in get_namespaces(**authd_kwargs):
-                print_f(record)
+                print_record(record, **pkwargs)
 
     elif args.subcommand == 'exports':
         for record in get_simple('exports', **authd_kwargs):
-            print_f(record)
+            print_record(record, **pkwargs)
 
     else:
-        raise NotImplemented(args.subcommand)
+        raise NotImplementedError(args.subcommand)
 
 
 def get_argparser ():
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--authenticate', action='store_true', default=False)
     argparser.add_argument('--pprint', action='store_true', default=False)
+    argparser.add_argument('--dsv', action='store_true', default=False)
 
     subparsers = argparser.add_subparsers(title='subcommands', dest='subcommand')
 
@@ -141,6 +143,31 @@ def get_namespaces (url, model, session_key=None, verify=True, parent_id="1", na
     print(response.json())
     for record in response.json()['records']:
         print(record)
+
+
+SIMPLE_FIELDS = {
+    'stores': ('storeID', 'storeType', 'name', 'url', 'description'),
+    'pools': ('_id', 'name', 'description'),
+    'namespaces': ('_id', 'posix_uid', 'posix_gid', 'posix_mode', 'path'),
+    'exports': ('_id', 'name', 'description', 'nsID'),
+}
+
+
+def print_record (record, type_, dsv=False, pprint_=False):
+    if dsv:
+        try:
+            fields = SIMPLE_FIELDS[type_]
+        except KeyError:
+            raise NotImplementedError(type_)
+        print(simple_dsv(record, fields))
+    elif pprint_:
+        pprint.pprint(record)
+    else:
+        print(record)
+
+
+def simple_dsv (record, fields):
+    return '|'.join(str(record[f]) for f in fields)
 
 
 class RESTErrors (Exception): pass
