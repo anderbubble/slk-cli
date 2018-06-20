@@ -125,18 +125,18 @@ def get_record_type_from_path (path):
 
 def print_record (record, type_, dsv=False, pprint_=False):
     if dsv:
-        try:
-            fields = SIMPLE_FIELDS[type_]
-        except KeyError:
-            raise NotImplementedError(type_)
-        print(simple_dsv(record, fields))
+        print(simple_dsv(record, type_))
     elif pprint_:
         pprint.pprint(record)
     else:
         print(record)
 
 
-def simple_dsv (record, fields):
+def simple_dsv (record, type_):
+    try:
+        fields = SIMPLE_FIELDS[type_]
+    except KeyError:
+        raise NotImplementedError(type_)
     return '|'.join(str(record[f]) for f in fields)
 
 
