@@ -37,10 +37,11 @@ def main ():
     kwargs['version'] = config.get('api', 'version')
 
     if args.path == 'version':
-        print(get_version(
-            url = config.get('api', 'url'),
-            verify = config.getboolean('api', 'verify'),
-        ))
+        for record in get_version(
+                url = config.get('api', 'url'),
+                verify = config.getboolean('api', 'verify'),
+        ):
+            print_record(record, path=args.path, dsv=args.dsv, pprint_=args.pprint)
     elif args.delete:
         response = delete_dynamic(args.path, **kwargs)
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
@@ -67,8 +68,7 @@ def get_config ():
 
 def get_version (url, verify=True):
     response = requests.get('{url}/version'.format(url=url), verify=verify)
-    version = response.json()['records'][0]['version']
-    return version
+    return response.json()['records']
 
 
 def authenticate (url, domain, username, password, verify=True):
@@ -86,6 +86,7 @@ def get_records_dynamic (path, url, version, session_key=None, verify=True):
     headers = {}
     if session_key is not None:
         headers['X-SDS-SessionKey'] = session_key
+    print(headers)
     response = requests.get('/'.join((url, version, path)), verify=verify, headers=headers)
     check_errors(response.json())
     return response.json()['records']
@@ -119,6 +120,7 @@ def get_namespaces (url, model, session_key=None, verify=True, parent_id="1", na
 
 
 SIMPLE_FIELDS = {
+    'version': ('version', ),
     'stores': ('storeID', 'storeType', 'name', 'url', 'description'),
     'pools': ('_id', 'name', 'description'),
     'namespaces': ('_id', 'posix_uid', 'posix_gid', 'posix_mode', 'path'),

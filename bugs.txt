@@ -1,0 +1,4 @@
+## Unable to query list of acs
+
+    $ curl --insecure -X GET "https://plink1/api/v1/acs" -H "accept: application/json" -H "X-SDS-SessionKey: ${sessionKey}"
+    {"errors": ["argument of type 'NoneType' is not iterable"]}
