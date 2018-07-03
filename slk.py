@@ -105,20 +105,6 @@ def check_errors (response_dict):
         raise RESTErrors(response_dict)
 
 
-def get_namespaces (url, model, session_key=None, verify=True, parent_id="1", names=['pl'], attributes={}):
-    response = requests.get('{url}/v1/namespaces'.format(url=url),
-                            verify=verify,
-                            headers={'X-SDS-SessionKey': session_key},
-                            json={'namespaces':{
-                                'parent_id':parent_id,
-                                'names': names,
-                                'attributes': attributes,
-                            }})
-    print(response.json())
-    for record in response.json()['records']:
-        print(record)
-
-
 SIMPLE_FIELDS = {
     'version': ('version', ),
     'stores': ('storeID', 'storeType', 'name', 'url', 'description'),
