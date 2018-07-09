@@ -6,10 +6,13 @@ from __future__ import print_function
 
 import argparse
 import ConfigParser
+import json
 import os
 import pprint
 import requests
 import requests.status_codes
+import subprocess
+import tempfile
 import urllib3
 
 
@@ -42,6 +45,13 @@ def main ():
                 verify = config.getboolean('api', 'verify'),
         ):
             print_record(record, path=args.path, dsv=args.dsv, pprint_=args.pprint)
+    elif args.update:
+        json_ = get_records_dynamic(args.path, **kwargs)
+        if isinstance(json_, list) and len(json_) <= 1:
+            json_ = json_[0]
+        updated_json = edit_json(json_)
+        response = update_dynamic(args.path, data=json_, **kwargs)
+        print(response.status_code, requests.status_codes._codes[response.status_code][0])
     elif args.delete:
         response = delete_dynamic(args.path, **kwargs)
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
@@ -55,6 +65,7 @@ def get_argparser ():
     argparser.add_argument('--authenticate', action='store_true', default=False)
     argparser.add_argument('--pprint', action='store_true', default=False)
     argparser.add_argument('--dsv', action='store_true', default=False)
+    argparser.add_argument('--update', action='store_true', default=False)
     argparser.add_argument('--delete', action='store_true', default=False)
     argparser.add_argument('path')
     return argparser
@@ -86,10 +97,28 @@ def get_records_dynamic (path, url, version, session_key=None, verify=True):
     headers = {}
     if session_key is not None:
         headers['X-SDS-SessionKey'] = session_key
-    print(headers)
     response = requests.get('/'.join((url, version, path)), verify=verify, headers=headers)
     check_errors(response.json())
     return response.json()['records']
+
+
+def edit_json (json_):
+    with tempfile.NamedTemporaryFile() as f:
+        json.dump(json_, f, indent=4)
+        f.flush()
+        subprocess.call(["/usr/bin/vi", f.name])
+        f.seek(0)
+        updated_json = json.load(f)
+    return updated_json
+
+
+def update_dynamic (path, url, version, data, session_key=None, verify=True):
+    headers = {}
+    if session_key is not None:
+        headers['X-SDS-SessionKey'] = session_key
+    response = requests.put('/'.join((url, version, path)), data=data, verify=verify, headers=headers)
+    check_errors(response.json())
+    return response
 
 
 def delete_dynamic (path, url, version, session_key=None, verify=True):
