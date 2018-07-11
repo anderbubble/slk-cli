@@ -66,7 +66,7 @@ def main ():
         if isinstance(json_, list) and len(json_) <= 1:
             json_ = json_[0]
         updated_json = edit_json(json_)
-        response = update_dynamic(args.path, data=json_, **kwargs)
+        response = update_dynamic(args.path, data=updated_json, **kwargs)
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
     elif args.delete:
         response = delete_dynamic(args.path, **kwargs)
