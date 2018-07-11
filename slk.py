@@ -15,6 +15,13 @@ import subprocess
 import tempfile
 import urllib3
 
+import logging
+try:
+    import http.client as http_client
+except ImportError:
+    # Python 2
+    import httplib as http_client
+
 
 def main ():
     argparser = get_argparser()
@@ -23,6 +30,15 @@ def main ():
     args = argparser.parse_args()
 
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    logging.basicConfig()
+    if args.debug:
+        http_client.HTTPConnection.debuglevel = 1
+
+        logging.getLogger().setLevel(logging.DEBUG)
+        requests_log = logging.getLogger("requests.packages.urllib3")
+        requests_log.setLevel(logging.DEBUG)
+        requests_log.propagate = True
 
     kwargs = {
         'url': config.get('api', 'url'),
@@ -68,6 +84,7 @@ def get_argparser ():
     argparser.add_argument('--update', action='store_true', default=False)
     argparser.add_argument('--delete', action='store_true', default=False)
     argparser.add_argument('path')
+    argparser.add_argument('--debug', action='store_true', default=False)
     return argparser
 
 
