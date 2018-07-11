@@ -8,7 +8,6 @@ import argparse
 import ConfigParser
 import json
 import os
-import pprint
 import requests
 import requests.status_codes
 import subprocess
@@ -60,7 +59,7 @@ def main ():
                 url = config.get('api', 'url'),
                 verify = config.getboolean('api', 'verify'),
         ):
-            print_record(record, path=args.path, dsv=args.dsv, pprint_=args.pprint)
+            print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
     elif args.update:
         json_ = get_records_dynamic(args.path, **kwargs)
         if isinstance(json_, list) and len(json_) <= 1:
@@ -73,13 +72,13 @@ def main ():
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
     else:
         for record in get_records_dynamic(args.path, **kwargs):
-            print_record(record, path=args.path, dsv=args.dsv, pprint_=args.pprint)
+            print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
 
 
 def get_argparser ():
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--authenticate', action='store_true', default=False)
-    argparser.add_argument('--pprint', action='store_true', default=False)
+    argparser.add_argument('--indent', type=int)
     argparser.add_argument('--dsv', action='store_true', default=False)
     argparser.add_argument('--update', action='store_true', default=False)
     argparser.add_argument('--delete', action='store_true', default=False)
@@ -172,16 +171,14 @@ def get_record_type_from_path (path):
         raise NotImplementedError(path)
 
 
-def print_record (record, path=None, dsv=False, pprint_=False):
+def print_record (record, path=None, dsv=False, indent=None):
     if dsv:
         if path is None:
             raise TypeParseError('unable to determine record type without path')
         record_type = get_record_type_from_path(path)
         print(simple_dsv(record, record_type))
-    elif pprint_:
-        pprint.pprint(record)
     else:
-        print(record)
+        print(json.dumps(record, indent=indent))
 
 
 def simple_dsv (record, type_):
