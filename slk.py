@@ -54,7 +54,14 @@ def main ():
 
     kwargs['version'] = config.get('api', 'version')
 
+    action_args = (args.update, args.add, args.delete)
+
+    if len([arg for arg in action_args if arg]) > 1:
+        raise CLIException("can only take one action (update, add, or delete) at a time")
+
     if args.path == 'version':
+        if len([arg for arg in action_args if arg]) > 0:
+            raise CLIException("cannot update, add, or delete version")
         for record in get_version(
                 url = config.get('api', 'url'),
                 verify = config.getboolean('api', 'verify'),
@@ -67,6 +74,9 @@ def main ():
         updated_json = edit_json(json_)
         response = update_dynamic(args.path, data=updated_json, **kwargs)
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
+    elif args.add:
+        for record in add_dynamic(args.path, **kwargs):
+            print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
     elif args.delete:
         response = delete_dynamic(args.path, **kwargs)
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
@@ -80,6 +90,7 @@ def get_argparser ():
     argparser.add_argument('--authenticate', action='store_true', default=False)
     argparser.add_argument('--indent', type=int)
     argparser.add_argument('--dsv', action='store_true', default=False)
+    argparser.add_argument('--add', action='store_true', default=False)
     argparser.add_argument('--update', action='store_true', default=False)
     argparser.add_argument('--delete', action='store_true', default=False)
     argparser.add_argument('path')
@@ -126,6 +137,15 @@ def edit_json (json_):
         f.seek(0)
         updated_json = json.load(f)
     return updated_json
+
+
+def add_dynamic (path, url, version, session_key=None, verify=True):
+    headers = {}
+    if session_key is not None:
+        headers['X-SDS-SessionKey'] = session_key
+    response = requests.put('/'.join((url, version, path)), verify=verify, headers=headers)
+    check_errors(response.json())
+    return response.json()['records']
 
 
 def update_dynamic (path, url, version, data, session_key=None, verify=True):
@@ -187,6 +207,9 @@ def simple_dsv (record, type_):
     except KeyError:
         raise NotImplementedError(type_)
     return '|'.join(str(record[f]) for f in fields)
+
+
+class CLIException (Exception): pass
 
 
 class RESTErrors (Exception): pass
