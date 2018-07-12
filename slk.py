@@ -132,7 +132,7 @@ def update_dynamic (path, url, version, data, session_key=None, verify=True):
     headers = {}
     if session_key is not None:
         headers['X-SDS-SessionKey'] = session_key
-    response = requests.put('/'.join((url, version, path)), data=data, verify=verify, headers=headers)
+    response = requests.put('/'.join((url, version, path)), json={'values': data}, verify=verify, headers=headers)
     check_errors(response.json())
     return response
 
