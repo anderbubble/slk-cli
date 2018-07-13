@@ -153,10 +153,11 @@ def get_records (path, url, version, session_key=None, verify=True):
 
 
 def edit_json (json_, indent=None):
+    editor = os.environ.get('EDITOR', '/usr/bin/vi')
     with tempfile.NamedTemporaryFile() as f:
         json.dump(json_, f, indent=indent)
         f.flush()
-        subprocess.call(["/usr/bin/vi", f.name])
+        subprocess.call([editor, f.name])
         f.seek(0)
         updated_json = json.load(f)
     return updated_json
