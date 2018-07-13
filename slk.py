@@ -11,6 +11,7 @@ import os
 import requests
 import requests.status_codes
 import subprocess
+import sys
 import tempfile
 import urllib3
 
@@ -38,6 +39,15 @@ def main ():
         requests_log = logging.getLogger("requests.packages.urllib3")
         requests_log.setLevel(logging.DEBUG)
         requests_log.propagate = True
+
+    input_data = None
+    if args.input_file is not None:
+        if args.input_file == '-':
+            input_data = json.load(sys.stdin)
+        else:
+            with open(args.input_file) as fp:
+                input_data = json.load(fp)
+            
 
     kwargs = {
         'url': config.get('api', 'url'),
@@ -68,15 +78,21 @@ def main ():
         ):
             print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
     elif args.create:
-        template = get_template(args.path)
-        updated_json = edit_json(template, indent=args.indent)
+        if input_data is None:
+            template = get_template(args.path)
+            updated_json = edit_json(template, indent=args.indent)
+        else:
+            updated_json = input_data
         for record in create(args.path, data=updated_json, **kwargs):
             print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
     elif args.update:
-        json_ = get_records(args.path, **kwargs)
-        if isinstance(json_, list) and len(json_) <= 1:
-            json_ = json_[0]
-        updated_json = edit_json(json_, indent=args.indent)
+        if input_data is None:
+            json_ = get_records(args.path, **kwargs)
+            if isinstance(json_, list) and len(json_) <= 1:
+                json_ = json_[0]
+            updated_json = edit_json(json_, indent=args.indent)
+        else:
+            updated_json = input_data
         response = update(args.path, data=updated_json, **kwargs)
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
     elif args.add:
@@ -101,6 +117,7 @@ def get_argparser ():
     argparser.add_argument('--delete', action='store_true', default=False)
     argparser.add_argument('path')
     argparser.add_argument('--debug', action='store_true', default=False)
+    argparser.add_argument('--input-file', default=None)
     return argparser
 
 
