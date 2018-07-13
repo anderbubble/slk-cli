@@ -54,34 +54,39 @@ def main ():
 
     kwargs['version'] = config.get('api', 'version')
 
-    action_args = (args.update, args.add, args.delete)
+    action_args = (args.create, args.update, args.add, args.delete)
 
     if len([arg for arg in action_args if arg]) > 1:
-        raise CLIException("can only take one action (update, add, or delete) at a time")
+        raise CLIException("can only take one action (create, update, add, or delete) at a time")
 
     if args.path == 'version':
         if len([arg for arg in action_args if arg]) > 0:
-            raise CLIException("cannot update, add, or delete version")
+            raise CLIException("cannot create, update, add, or delete version")
         for record in get_version(
                 url = config.get('api', 'url'),
                 verify = config.getboolean('api', 'verify'),
         ):
             print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
+    elif args.create:
+        template = get_template(args.path)
+        updated_json = edit_json(template, indent=args.indent)
+        for record in create(args.path, data=updated_json, **kwargs):
+            print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
     elif args.update:
-        json_ = get_records_dynamic(args.path, **kwargs)
+        json_ = get_records(args.path, **kwargs)
         if isinstance(json_, list) and len(json_) <= 1:
             json_ = json_[0]
-        updated_json = edit_json(json_)
-        response = update_dynamic(args.path, data=updated_json, **kwargs)
+        updated_json = edit_json(json_, indent=args.indent)
+        response = update(args.path, data=updated_json, **kwargs)
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
     elif args.add:
-        for record in add_dynamic(args.path, **kwargs):
+        for record in add(args.path, **kwargs):
             print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
     elif args.delete:
-        response = delete_dynamic(args.path, **kwargs)
+        response = delete(args.path, **kwargs)
         print(response.status_code, requests.status_codes._codes[response.status_code][0])
     else:
-        for record in get_records_dynamic(args.path, **kwargs):
+        for record in get_records(args.path, **kwargs):
             print_record(record, path=args.path, dsv=args.dsv, indent=args.indent)
 
 
@@ -90,6 +95,7 @@ def get_argparser ():
     argparser.add_argument('--authenticate', action='store_true', default=False)
     argparser.add_argument('--indent', type=int)
     argparser.add_argument('--dsv', action='store_true', default=False)
+    argparser.add_argument('--create', action='store_true', default=False)
     argparser.add_argument('--add', action='store_true', default=False)
     argparser.add_argument('--update', action='store_true', default=False)
     argparser.add_argument('--delete', action='store_true', default=False)
@@ -120,7 +126,7 @@ def authenticate (url, domain, username, password, verify=True):
     return session_key
 
 
-def get_records_dynamic (path, url, version, session_key=None, verify=True):
+def get_records (path, url, version, session_key=None, verify=True):
     headers = {}
     if session_key is not None:
         headers['X-SDS-SessionKey'] = session_key
@@ -129,9 +135,9 @@ def get_records_dynamic (path, url, version, session_key=None, verify=True):
     return response.json()['records']
 
 
-def edit_json (json_):
+def edit_json (json_, indent=None):
     with tempfile.NamedTemporaryFile() as f:
-        json.dump(json_, f, indent=4)
+        json.dump(json_, f, indent=indent)
         f.flush()
         subprocess.call(["/usr/bin/vi", f.name])
         f.seek(0)
@@ -139,7 +145,16 @@ def edit_json (json_):
     return updated_json
 
 
-def add_dynamic (path, url, version, session_key=None, verify=True):
+def create (path, url, version, data, session_key=None, verify=True):
+    headers = {}
+    if session_key is not None:
+        headers['X-SDS-SessionKey'] = session_key
+    response = requests.post('/'.join((url, version, path)), json=data, verify=verify, headers=headers)
+    check_errors(response.json())
+    return response.json()['records']
+
+
+def add (path, url, version, session_key=None, verify=True):
     headers = {}
     if session_key is not None:
         headers['X-SDS-SessionKey'] = session_key
@@ -148,7 +163,7 @@ def add_dynamic (path, url, version, session_key=None, verify=True):
     return response.json()['records']
 
 
-def update_dynamic (path, url, version, data, session_key=None, verify=True):
+def update (path, url, version, data, session_key=None, verify=True):
     headers = {}
     if session_key is not None:
         headers['X-SDS-SessionKey'] = session_key
@@ -157,7 +172,7 @@ def update_dynamic (path, url, version, data, session_key=None, verify=True):
     return response
 
 
-def delete_dynamic (path, url, version, session_key=None, verify=True):
+def delete (path, url, version, session_key=None, verify=True):
     headers = {}
     if session_key is not None:
         headers['X-SDS-SessionKey'] = session_key
@@ -191,6 +206,11 @@ def get_record_type_from_path (path):
         raise NotImplementedError(path)
 
 
+def get_template (path):
+    record_type = get_record_type_from_path(path)
+    return TEMPLATES[record_type]
+
+
 def print_record (record, path=None, dsv=False, indent=None):
     if dsv:
         if path is None:
@@ -207,6 +227,41 @@ def simple_dsv (record, type_):
     except KeyError:
         raise NotImplementedError(type_)
     return '|'.join(str(record[f]) for f in fields)
+
+
+TEMPLATES = {
+    'acs': {
+        'acses': [{
+            'name': '',
+            'description': '',
+            'domain_id': 1,
+            'target_type': 'filesystem',
+            'acs': ['read'],
+            'target_id': 1,
+        }]
+    },
+
+    'users': {
+        'users': [{
+            'name': '',
+            'domain_id': 1,
+            'password': '',
+            'uid': 1,
+            'primaryGID': 1,
+            'email': None, 
+            'description': '',
+        }]
+    },
+
+    'roles': {
+        'roles': [{
+            'name': '',
+            'gid': 1100215, 
+            'domain_id': 1, 
+            'description': '',
+        }]
+    },
+}
 
 
 class CLIException (Exception): pass
